@@ -49,3 +49,11 @@ from .adversarial_validation import (
     validate_strategy,
     validate_from_files,
 )
+
+from .strategy_evaluator import (
+    evaluate_backtest_metrics,
+    save_validated_alpha,
+    extract_learnings,
+    get_passing_criteria,
+    EvaluationResult,
+)
