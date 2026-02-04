@@ -50,6 +50,8 @@ from .adversarial_validation import (
     validate_from_files,
     validate_all_alphas,
     load_existing_alpha_returns,
+    validate_trade_manually,
+    TradeValidation,
 )
 
 from .strategy_evaluator import (

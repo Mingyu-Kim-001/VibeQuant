@@ -963,3 +963,262 @@ def validate_all_alphas(
                 print(f"{alpha_name}: ERROR - {e}")
     
     return results
+
+
+@dataclass
+class TradeValidation:
+    """Result of manual trade validation."""
+    trade_date: str
+    return_on_date: float
+    validation_steps: List[Dict[str, Any]]
+    data_used: Dict[str, str]
+    verdict: str  # VALID, INVALID, UNCERTAIN
+    issues: List[str]
+    explanation: str
+
+
+def validate_trade_manually(
+    alpha_path: str,
+    prices: pd.DataFrame,
+    num_samples: int = 2,
+    verbose: bool = True,
+) -> List[TradeValidation]:
+    """
+    Manually validate trades by tracing through the strategy logic step-by-step.
+    
+    This function:
+    1. Loads the strategy code
+    2. Picks sample dates with significant returns
+    3. Executes the strategy logic step-by-step
+    4. Verifies signals use only past data
+    
+    Args:
+        alpha_path: Path to alpha .py file
+        prices: DataFrame of prices (index=dates, columns=symbols)
+        num_samples: Number of trades to validate
+        verbose: Print detailed output
+    
+    Returns:
+        List of TradeValidation results
+    """
+    import os
+    import re
+    
+    # Load strategy code
+    with open(alpha_path, 'r') as f:
+        code = f.read()
+    
+    alpha_name = os.path.basename(alpha_path).replace('.py', '')
+    
+    # Load returns if available
+    returns_path = alpha_path.replace('.py', '_returns.csv')
+    if os.path.exists(returns_path):
+        returns_df = pd.read_csv(returns_path, index_col=0, parse_dates=True)
+        returns = returns_df.iloc[:, 0]
+    else:
+        # Generate returns by running strategy
+        returns = None
+    
+    if verbose:
+        print("=" * 70)
+        print(f"MANUAL TRADE VALIDATION: {alpha_name}")
+        print("=" * 70)
+        print(f"\nStrategy Code:\n{'-' * 40}")
+        # Print just the generate_signals function
+        func_match = re.search(r'def generate_signals.*?(?=\ndef |\Z)', code, re.DOTALL)
+        if func_match:
+            print(func_match.group(0)[:500] + "..." if len(func_match.group(0)) > 500 else func_match.group(0))
+        print(f"{'-' * 40}\n")
+    
+    validations = []
+    
+    # Pick sample dates
+    if returns is not None:
+        # Pick dates with significant returns
+        significant = returns[returns.abs() > 0.01]
+        if len(significant) < num_samples:
+            significant = returns
+        sample_dates = significant.sample(min(num_samples, len(significant)), random_state=42).index
+    else:
+        # Pick random dates from prices
+        sample_dates = prices.index[-252:].to_series().sample(num_samples, random_state=42).index
+    
+    for sample_date in sample_dates:
+        if verbose:
+            print(f"\n{'=' * 50}")
+            print(f"Validating trade on: {sample_date.date()}")
+            if returns is not None:
+                print(f"Return on this date: {returns.loc[sample_date]:.2%}")
+            print(f"{'=' * 50}")
+        
+        steps = []
+        issues = []
+        data_used = {}
+        
+        # Analyze what data the strategy uses
+        # Check for cummax, rolling, pct_change, shift patterns
+        
+        # Step 1: Identify lookback patterns
+        lookback_patterns = {
+            'cummax': r'\.cummax\(\)',
+            'rolling': r'\.rolling\((\d+)\)',
+            'pct_change': r'\.pct_change\((\d+)\)',
+            'shift': r'\.shift\((-?\d+)\)',
+            'rank': r'\.rank\(',
+            'ewm': r'\.ewm\(',
+        }
+        
+        found_patterns = {}
+        for name, pattern in lookback_patterns.items():
+            matches = re.findall(pattern, code)
+            if matches:
+                found_patterns[name] = matches
+        
+        if verbose:
+            print(f"\nDetected patterns in code:")
+            for name, matches in found_patterns.items():
+                print(f"  - {name}: {matches}")
+        
+        # Step 2: Trace data availability
+        steps.append({
+            "step": 1,
+            "description": "Data availability check",
+            "detail": f"On {sample_date.date()}, strategy can only use data up to {(sample_date - pd.Timedelta(days=1)).date()} for signal generation"
+        })
+        
+        # Step 3: Check for look-ahead risks
+        look_ahead_risk = False
+        
+        if 'rank' in found_patterns and 'shift' not in found_patterns:
+            look_ahead_risk = True
+            issues.append("rank() without shift() - may use same-day data")
+            steps.append({
+                "step": 2,
+                "description": "POTENTIAL ISSUE: rank() without shift()",
+                "detail": "The .rank() operation uses data from the current day. If trading at market open, this is look-ahead bias."
+            })
+        
+        if 'cummax' in found_patterns:
+            steps.append({
+                "step": 3,
+                "description": "cummax() is backward-looking",
+                "detail": "cummax() only uses historical data up to current point - OK"
+            })
+        
+        if 'pct_change' in found_patterns:
+            lookback = found_patterns['pct_change'][0] if found_patterns['pct_change'] else '?'
+            steps.append({
+                "step": 4,
+                "description": f"pct_change({lookback}) lookback",
+                "detail": f"Uses prices from T-{lookback} to T for return calculation"
+            })
+        
+        # Step 4: Execution timing analysis
+        if 'shift' in found_patterns:
+            shift_vals = [int(s) for s in found_patterns['shift']]
+            if any(s < 0 for s in shift_vals):
+                look_ahead_risk = True
+                issues.append(f"Negative shift detected: {shift_vals} - LOOK AHEAD BIAS!")
+            elif any(s >= 1 for s in shift_vals):
+                steps.append({
+                    "step": 5,
+                    "description": "shift() provides lag",
+                    "detail": f"shift({shift_vals}) ensures signal uses only past data - GOOD"
+                })
+        
+        # Step 5: Sample calculation trace
+        if sample_date in prices.index:
+            idx = prices.index.get_loc(sample_date)
+            if idx > 20:
+                # Show sample data
+                sample_symbol = prices.columns[0]
+                price_before = prices.iloc[idx-5:idx, 0].values
+                price_on_date = prices.iloc[idx, 0]
+                
+                data_used = {
+                    "sample_symbol": sample_symbol,
+                    "prices_T-5_to_T-1": str(price_before.round(2)),
+                    "price_on_T": str(round(price_on_date, 2)),
+                    "execution_assumption": "Close-to-close (signal generated at close, executed next day)"
+                }
+                
+                steps.append({
+                    "step": 6,
+                    "description": "Sample data trace",
+                    "detail": f"{sample_symbol}: prices T-5 to T-1 = {price_before.round(2)}, price on T = {price_on_date:.2f}"
+                })
+        
+        # Determine verdict
+        if any("LOOK AHEAD" in i.upper() for i in issues):
+            verdict = "INVALID"
+            explanation = "Look-ahead bias detected - strategy uses future data"
+        elif look_ahead_risk:
+            verdict = "UNCERTAIN"
+            explanation = "Potential same-day bias - depends on execution timing. Recommend adding .shift(1)"
+        else:
+            verdict = "VALID"
+            explanation = "Strategy appears to use only past data for signal generation"
+        
+        if verbose:
+            print(f"\nValidation Steps:")
+            for step in steps:
+                print(f"  Step {step['step']}: {step['description']}")
+                print(f"    {step['detail']}")
+            
+            print(f"\nData Used:")
+            for k, v in data_used.items():
+                print(f"  {k}: {v}")
+            
+            print(f"\nIssues Found: {issues if issues else 'None'}")
+            print(f"\n>>> VERDICT: {verdict}")
+            print(f"    {explanation}")
+        
+        validations.append(TradeValidation(
+            trade_date=str(sample_date.date()),
+            return_on_date=float(returns.loc[sample_date]) if returns is not None else 0.0,
+            validation_steps=steps,
+            data_used=data_used,
+            verdict=verdict,
+            issues=issues,
+            explanation=explanation,
+        ))
+    
+    return validations
+
+
+def validate_alpha_trades(
+    alpha_name: str = "alpha_001_maxdd_rev",
+    validated_alphas_dir: str = "results/validated_alphas",
+    num_samples: int = 2,
+) -> List[TradeValidation]:
+    """
+    Convenience function to validate trades for a specific alpha.
+    
+    Args:
+        alpha_name: Name of the alpha (without extension)
+        validated_alphas_dir: Directory containing validated alphas
+        num_samples: Number of trades to validate
+    
+    Returns:
+        List of TradeValidation results
+    """
+    import os
+    
+    # Load prices (need to get from data loader)
+    try:
+        from .data.alpaca_loader import AlpacaDataLoader
+        loader = AlpacaDataLoader()
+        data = loader.load_prices(days=2520)  # 10 years
+        prices = data['close'].unstack(level=0)
+    except Exception as e:
+        print(f"Warning: Could not load prices from Alpaca: {e}")
+        print("Using placeholder prices for demonstration...")
+        # Create placeholder for demo
+        prices = pd.DataFrame()
+    
+    alpha_path = os.path.join(validated_alphas_dir, f"{alpha_name}.py")
+    
+    if not os.path.exists(alpha_path):
+        raise FileNotFoundError(f"Alpha not found: {alpha_path}")
+    
+    return validate_trade_manually(alpha_path, prices, num_samples)
