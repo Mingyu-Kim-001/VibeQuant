@@ -48,6 +48,8 @@ from .adversarial_validation import (
     Severity,
     validate_strategy,
     validate_from_files,
+    validate_all_alphas,
+    load_existing_alpha_returns,
 )
 
 from .strategy_evaluator import (
