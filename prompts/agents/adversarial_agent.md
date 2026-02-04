@@ -120,66 +120,65 @@ result.recommendations  # List of fix suggestions
 | LOW | Minor concern (code style) | Note for improvement |
 | PASS | No issues found | Proceed with caution |
 
-## MANUAL TRADE VALIDATION (LLM Task)
+## MANUAL TRADE VALIDATION
 
-The automated validator uses regex patterns. **You must manually verify 1-2 trades** by:
+Use the automated trade validation function:
 
-### Step 1: Pick a Sample Trade Date
 ```python
-# Load trade data
-import pandas as pd
-returns = pd.read_csv('results/validated_alphas/alpha_001_maxdd_rev_returns.csv', index_col=0, parse_dates=True)
+from vibequant.adversarial_validation import validate_trade_manually
 
-# Pick a random date with significant return
-sample_date = returns[returns.iloc[:,0].abs() > 0.01].sample(1).index[0]
-print(f"Validating trade on: {sample_date}")
+# Validate 2 sample trades
+results = validate_trade_manually(
+    'results/validated_alphas/alpha_001_maxdd_rev.py',
+    prices,  # DataFrame of prices
+    num_samples=2,
+    verbose=True
+)
+
+# Results show:
+# - Detected patterns (cummax, rolling, rank, shift, etc.)
+# - Data availability analysis
+# - Look-ahead bias indicators
+# - Verdict: VALID, INVALID, or UNCERTAIN
 ```
 
-### Step 2: Read the Strategy Code
-```python
-with open('results/validated_alphas/alpha_001_maxdd_rev.py') as f:
-    code = f.read()
-print(code)
+### What the function checks:
+1. **Pattern Detection**: Finds cummax, rolling, pct_change, shift, rank, ewm
+2. **Shift Analysis**: Checks if rank/rolling have proper .shift(1)
+3. **Data Availability**: Verifies signal uses only T-1 data
+4. **Verdict**: VALID (safe), INVALID (look-ahead), UNCERTAIN (depends on execution)
+
+### Example Output:
+```
+MANUAL TRADE VALIDATION: alpha_001_maxdd_rev
+==================================================
+Validating trade on: 2023-03-29
+Return on this date: 2.13%
+==================================================
+
+Detected patterns in code:
+  - cummax: ['.cummax()']
+  - rank: ['.rank(']
+
+Validation Steps:
+  Step 1: Data availability check
+    On 2023-03-29, strategy can only use data up to 2023-03-28
+  Step 2: POTENTIAL ISSUE: rank() without shift()
+    The .rank() operation uses data from the current day.
+
+Issues Found: ['rank() without shift() - may use same-day data']
+
+>>> VERDICT: UNCERTAIN
+    Potential same-day bias - depends on execution timing.
 ```
 
-### Step 3: Manually Trace the Logic
-For the sample date, calculate step-by-step:
+### For deeper manual analysis (LLM task):
+If the automated check shows UNCERTAIN, manually trace the logic:
 
-1. **What data was available?** (only data up to T-1)
-   ```
-   On 2023-05-15, the strategy can only see prices up to 2023-05-14
-   ```
-
-2. **Walk through the signal calculation:**
-   ```
-   lookback = 5
-   returns_5d = prices.pct_change(5)  # Uses prices[T-5:T-1], OK
-   rank = returns_5d.rank()           # Ranks using data at T-1, OK
-   signal = rank < 10                 # Bottom 10 losers
-   ```
-
-3. **Verify no future data used:**
-   - Does `.shift()` appear where needed?
-   - Does `.rolling().mean()` use only past data?
-   - Are ranks computed on data available at decision time?
-
-### Step 4: Report Findings
-```markdown
-## Manual Validation: alpha_001_maxdd_rev
-
-**Sample Date:** 2023-05-15
-
-**Signal Calculation Trace:**
-1. 5-day return for AAPL: (142.50 - 138.20) / 138.20 = 3.1%
-2. Ranked 45th out of 200 stocks
-3. NOT in bottom 10, so signal = 0 ✓
-
-**Data Used:**
-- Prices from 2023-05-10 to 2023-05-14 ✓
-- No future data accessed ✓
-
-**Verdict:** VALID / INVALID (explain why)
-```
+1. Read the strategy code
+2. For a specific date, calculate what data was available
+3. Walk through signal generation step-by-step
+4. Verify each operation uses only past data
 
 ## YOUR ROLE
 
