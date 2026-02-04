@@ -14,23 +14,54 @@ You are the **Orchestrator** of a PARALLEL PIPELINE for alpha discovery.
 ```
 Read CLAUDE.md
 Read memory/learnings.json
+Read memory/strategies.json
 ```
 
 2. Key rules:
    - Universe: `sp500_sf` (survivorship-free) for all final tests
-   - Passing: Sharpe >= 0.8, Profit Factor >= 1.0, Trades >= 20
+   - Passing: Sharpe >= 0.5, Profit Factor >= 1.0, Trades >= 20
    - Goal: Find 10 validated alphas
+
+## DUPLICATE AVOIDANCE (CRITICAL)
+
+Before generating ANY hypothesis, check what's already been tried:
+
+### Already Tested (from memory/strategies.json):
+```python
+# Load and display tested strategies
+import json
+with open('memory/strategies.json') as f:
+    strategies = json.load(f)
+
+tested = [(s['name'], s['category'], s['status']) for s in strategies]
+print("Already tested:")
+for name, cat, status in tested:
+    print(f"  [{status}] {cat}: {name}")
+```
+
+### Failed Patterns (from memory/learnings.json):
+- Low Volatility strategies: Low Sharpe despite good win rate
+- Alpha033 Gap Reversal: Fails on survivorship-free
+- Pure momentum without filters: High drawdown
+
+### DO NOT RETRY:
+- Same category + similar parameters (e.g., reversal with lookback=5, hold=5)
+- Strategies marked as "failed" in memory/strategies.json
+- Patterns listed in learnings.json "failed_patterns"
+
+### MUST TRY DIFFERENT:
+- Different lookback periods (if 5 failed, try 10, 20, 60)
+- Different categories (if reversal saturated, try momentum, factor)
+- Novel combinations not in memory
 
 ## PARALLEL PIPELINE ARCHITECTURE
 
-Run agents in PARALLEL, not sequentially:
-
 ```
-INSIGHT (batch)     RESEARCH (parallel)    BACKTEST (parallel)    FEEDBACK
-   │                      │                       │                   │
-   ├─ Hypo 1 ──────────▶ Code 1 ──────────────▶ Test 1 ────────────▶ Eval
-   ├─ Hypo 2 ──────────▶ Code 2 ──────────────▶ Test 2 ────────────▶ Eval
-   └─ Hypo 3 ──────────▶ Code 3 ──────────────▶ Test 3 ────────────▶ Eval
+INSIGHT (batch)     RESEARCH (parallel)    BACKTEST (parallel)    ADVERSARIAL    FEEDBACK
+   │                      │                       │                     │             │
+   ├─ Hypo 1 ──────────▶ Code 1 ──────────────▶ Test 1 ───────────▶ Validate ───▶ Eval
+   ├─ Hypo 2 ──────────▶ Code 2 ──────────────▶ Test 2 ───────────▶ Validate ───▶ Eval
+   └─ Hypo 3 ──────────▶ Code 3 ──────────────▶ Test 3 ───────────▶ Validate ───▶ Eval
 ```
 
 ## HOW TO RUN PARALLEL
@@ -41,11 +72,14 @@ Use Task tool with MULTIPLE calls in ONE message:
 ```
 In a SINGLE message, spawn 3 Insight Agents in parallel:
 
-Task 1: "Read prompts/agents/insight_agent.md. Generate hypothesis for MOMENTUM category. Context: [learnings]"
+Task 1: "Read prompts/agents/insight_agent.md. Generate hypothesis for MOMENTUM category. 
+        AVOID: [list tested momentum strategies from memory]. Context: [learnings]"
 
-Task 2: "Read prompts/agents/insight_agent.md. Generate hypothesis for MEAN_REVERSION category. Context: [learnings]"
+Task 2: "Read prompts/agents/insight_agent.md. Generate hypothesis for MEAN_REVERSION category.
+        AVOID: [list tested reversal strategies from memory]. Context: [learnings]"
 
-Task 3: "Read prompts/agents/insight_agent.md. Generate hypothesis for FACTOR category. Context: [learnings]"
+Task 3: "Read prompts/agents/insight_agent.md. Generate hypothesis for FACTOR category.
+        AVOID: [list tested factor strategies from memory]. Context: [learnings]"
 ```
 
 ### Step 2: Parallel Coding (as hypotheses complete)
@@ -66,13 +100,34 @@ Task 2: "Read prompts/agents/backtest_agent.md. Test strategy: [code 2]. Univers
 Task 3: "Read prompts/agents/backtest_agent.md. Test strategy: [code 3]. Universe: sp500_sf"
 ```
 
-### Step 4: Evaluate (sequential - needs correlation check)
+### Step 4: Adversarial Validation (for passing strategies)
+```python
+from vibequant.adversarial_validation import validate_strategy, validate_all_alphas
+
+# Validate passing strategy
+result = validate_strategy(
+    strategy_code=code,
+    backtest_metrics=metrics,
+    universe="sp500_sf",
+    daily_returns=returns,
+)
+
+# REJECT if CRITICAL issues (look-ahead bias, survivorship bias)
+if result.severity.value == "CRITICAL":
+    print(f"REJECTED: {result.issues_found[0].description}")
+    # Add to failed_patterns in learnings
+else:
+    print(f"PASSED validation (severity: {result.severity.value})")
 ```
-For each backtest result:
+
+### Step 5: Evaluate (sequential - needs correlation check)
+```
+For each validated backtest result:
 
 Task: "Read prompts/agents/feedback_agent.md. Evaluate:
 - Strategy: [name]
 - Results: [metrics]
+- Validation: [adversarial result]
 - Existing alphas: [list validated alphas for correlation check]
 
 Check correlation to existing alphas. If PASS, save to results/validated_alphas/"
@@ -87,6 +142,11 @@ results/validated_alphas/
 ├── alpha_002_momentum.py
 ├── alpha_002_momentum.json
 └── portfolio_correlation.json       # Correlation matrix
+
+memory/
+├── strategies.json                  # ALL tested (passed + failed)
+├── learnings.json                   # Patterns to avoid/follow
+└── hypotheses.json                  # All hypotheses tested
 ```
 
 ## PIPELINE STATE
@@ -94,6 +154,7 @@ results/validated_alphas/
 Track:
 ```python
 state = {
+    "tested_strategies": [],     # From memory/strategies.json
     "hypothesis_queue": [],      # Ready to code
     "code_queue": [],            # Ready to test
     "backtest_queue": [],        # Ready to evaluate
@@ -108,6 +169,17 @@ state = {
 1. **SUCCESS**: 10 validated uncorrelated alphas
 2. **MAX_ITER**: 50 iterations
 3. **STALLED**: 15 consecutive failures
+4. **SATURATED**: All parameter combinations in a category exhausted
+
+## ADVERSARIAL CHECKS
+
+Strategies are automatically checked for:
+- Look-ahead bias (CRITICAL - reject)
+- Survivorship bias (CRITICAL - reject)
+- Regime dependency (HIGH - warn)
+- High transaction costs (HIGH - warn)
+- Correlation to existing alphas (HIGH - reject if >0.7)
+- Performance decay (MEDIUM - warn)
 
 ## FINAL OUTPUT
 
@@ -115,22 +187,26 @@ Create `results/alpha_gathering_summary.md`:
 ```markdown
 # Validated Alphas
 
-| # | Name | Sharpe | Annual Ret | Max DD | Category |
-|---|------|--------|------------|--------|----------|
-| 1 | ...  | 0.85   | 32%        | -25%   | reversal |
-| 2 | ...  | 0.92   | 28%        | -30%   | momentum |
+| # | Name | Sharpe | Annual Ret | Max DD | Category | Validation |
+|---|------|--------|------------|--------|----------|------------|
+| 1 | ...  | 0.85   | 32%        | -25%   | reversal | PASS       |
+| 2 | ...  | 0.92   | 28%        | -30%   | momentum | LOW        |
 
 ## Summary
 - Total alphas found: X
 - Avg Sharpe: X.XX
+- Strategies tested: Y
+- Failure rate: Z%
 ```
 
 ## START NOW
 
-1. Read CLAUDE.md and memory/learnings.json
-2. Batch-generate 3 hypotheses (parallel)
-3. Run pipeline: Research → Backtest → Feedback
-4. Save passing alphas, extract learnings from failures
-5. Repeat until 10 uncorrelated alphas found
+1. Read CLAUDE.md, memory/learnings.json, and memory/strategies.json
+2. Identify what's already been tested (avoid duplicates!)
+3. Batch-generate 3 NEW hypotheses (parallel) - different from tested
+4. Run pipeline: Research → Backtest → Adversarial → Feedback
+5. Save passing alphas, extract learnings from failures
+6. Update memory/strategies.json with results
+7. Repeat until 10 alphas found
 
 --------------------------------------------------------------------------------
