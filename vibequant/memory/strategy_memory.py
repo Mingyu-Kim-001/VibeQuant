@@ -120,6 +120,8 @@ class StrategyMemory:
             "failed_patterns": [],
             "market_insights": [],
             "technical_notes": [],
+            "tried_strategies": [],  # Track already-tried strategy combinations
+            "validation_failures": [],  # Track adversarial validation failures
         }
         self._metrics: Dict[str, Any] = {
             "total_hypotheses": 0,
@@ -456,6 +458,8 @@ class StrategyMemory:
             "failed_patterns",
             "market_insights",
             "technical_notes",
+            "tried_strategies",
+            "validation_failures",
         ],
         learning: str,
     ) -> None:
@@ -466,10 +470,13 @@ class StrategyMemory:
             learning_type: Type of learning
             learning: The learning text
         """
-        if learning_type in self._learnings:
-            if learning not in self._learnings[learning_type]:
-                self._learnings[learning_type].append(learning)
-                self._save_learnings()
+        # Initialize if not exists (for backward compatibility)
+        if learning_type not in self._learnings:
+            self._learnings[learning_type] = []
+        
+        if learning not in self._learnings[learning_type]:
+            self._learnings[learning_type].append(learning)
+            self._save_learnings()
 
     def get_learnings(
         self,

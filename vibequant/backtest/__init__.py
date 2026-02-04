@@ -1,3 +1,3 @@
-from .engine import BacktestEngine, BacktestConfig
+from .engine import BacktestEngine, BacktestConfig, BacktestResults, Trade
 
-__all__ = ["BacktestEngine", "BacktestConfig"]
+__all__ = ["BacktestEngine", "BacktestConfig", "BacktestResults", "Trade"]

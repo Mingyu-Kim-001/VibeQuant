@@ -40,3 +40,12 @@ from .alpha101 import (
     alpha001, alpha002, alpha006, alpha012, alpha033,
     alpha041, alpha042, alpha053, alpha054, alpha101,
 )
+
+from .adversarial_validation import (
+    AdversarialValidator,
+    ValidationResult,
+    ValidationIssue,
+    Severity,
+    validate_strategy,
+    validate_from_files,
+)

@@ -16,6 +16,7 @@ from .data.alpaca_loader import AlpacaDataLoader
 from .data.sp500_loader import SP500SurvivorshipFreeLoader
 from .backtest.engine import BacktestEngine, BacktestConfig, execute_strategy_code
 from .agents.base import check_passing_criteria, PASSING_CRITERIA
+from .adversarial_validation import validate_strategy, Severity
 
 
 @dataclass
@@ -404,8 +405,8 @@ class AutomatedWorkflow:
         self.sp500_loader = None
         self.backtest_engine = BacktestEngine(BacktestConfig())
 
-        # Track tested combinations
-        self.tested_combinations = set()
+        # Track tested combinations - load from memory to avoid re-trying
+        self.tested_combinations = self._load_tried_combinations()
 
         # Results
         self.successful_strategies = []
@@ -415,6 +416,66 @@ class AutomatedWorkflow:
         self.prices = None
         self.universe_mask = None  # For survivorship-bias-free
         self.benchmark = None
+
+    def _load_tried_combinations(self) -> set:
+        """Load previously tried strategy combinations from memory."""
+        tried = set()
+        # Load from strategies in memory
+        for strategy in self.memory._strategies.values():
+            params_str = json.dumps(strategy.parameters, sort_keys=True)
+            combo_key = f"{strategy.name}_{params_str}"
+            tried.add(combo_key)
+        
+        # Load from learnings
+        learnings = self.memory.get_learnings()
+        for pattern in learnings.get("tried_strategies", []):
+            tried.add(pattern)
+        
+        if tried:
+            print(f"Loaded {len(tried)} previously tried combinations from memory")
+        return tried
+
+    def _save_tried_combination(self, combo_key: str) -> None:
+        """Save a tried combination to memory."""
+        self.memory.add_learning("tried_strategies", combo_key)
+
+    def _validate_strategy(self, code: str, metrics: Dict, name: str) -> Tuple[bool, List[str]]:
+        """
+        Run adversarial validation on a strategy.
+        
+        Returns:
+            Tuple of (passed, list of issues)
+        """
+        universe = "sp500_sf" if self.survivorship_bias_free else "liquid_500"
+        
+        validation_result = validate_strategy(
+            strategy_code=code,
+            backtest_metrics=metrics,
+            universe=universe,
+        )
+        
+        issues = []
+        for issue in validation_result.issues_found:
+            issues.append(f"[{issue.severity.value}] {issue.issue_type}: {issue.description}")
+        
+        # Check for CRITICAL issues
+        has_critical = any(i.severity == Severity.CRITICAL for i in validation_result.issues_found)
+        
+        if has_critical:
+            # Save learnings
+            for issue in validation_result.issues_found:
+                if issue.severity == Severity.CRITICAL:
+                    learning = f"VALIDATION_FAILURE ({name}): {issue.issue_type} - {issue.description}"
+                    self.memory.add_learning("failed_patterns", learning)
+                    if issue.fix_suggestion:
+                        self.memory.add_learning("technical_notes", f"FIX: {issue.fix_suggestion}")
+            
+            print(f"    *** ADVERSARIAL VALIDATION FAILED ***")
+            print(f"    Severity: {validation_result.severity.value}")
+            for rec in validation_result.recommendations:
+                print(f"    - {rec}")
+        
+        return not has_critical, issues
 
     def _load_data(self) -> bool:
         """Load market data."""
@@ -489,12 +550,15 @@ class AutomatedWorkflow:
 
             for combo in itertools.product(*param_values):
                 params = dict(zip(param_names, combo))
-                combo_key = f"{template.name}_{params}"
+                params_str = json.dumps(params, sort_keys=True)
+                combo_key = f"{template.name}_{params_str}"
 
                 if combo_key in self.tested_combinations:
                     continue
 
+                # Mark as tried and save to memory
                 self.tested_combinations.add(combo_key)
+                self._save_tried_combination(combo_key)
 
                 # Generate hypothesis
                 try:
@@ -666,15 +730,33 @@ class AutomatedWorkflow:
 
             # Track results
             if passed:
-                self.successful_strategies.append({
-                    "name": name,
-                    "category": category,
-                    "sharpe": metrics["sharpe_ratio"],
-                    "return": metrics["annual_return"],
-                    "drawdown": metrics["max_drawdown"],
-                    "params": params,
-                })
-                print(f"    *** PASSED! ***")
+                # Run adversarial validation on passing strategies
+                print(f"    Running adversarial validation...")
+                validation_passed, validation_issues = self._validate_strategy(code, metrics, name)
+                
+                if validation_passed:
+                    self.successful_strategies.append({
+                        "name": name,
+                        "category": category,
+                        "sharpe": metrics["sharpe_ratio"],
+                        "return": metrics["annual_return"],
+                        "drawdown": metrics["max_drawdown"],
+                        "params": params,
+                    })
+                    print(f"    *** PASSED VALIDATION! ***")
+                else:
+                    # Validation failed - discard strategy
+                    self.failed_strategies.append({
+                        "name": name,
+                        "reason": "Adversarial validation failed: " + "; ".join(validation_issues[:2]),
+                    })
+                    # Update memory to mark as failed
+                    self.memory.update_strategy_backtest(
+                        strategy_id=strategy_record.id,
+                        backtest_results=bt_result,
+                        passed=False,
+                        failure_reasons=validation_issues,
+                    )
             else:
                 self.failed_strategies.append({
                     "name": name,

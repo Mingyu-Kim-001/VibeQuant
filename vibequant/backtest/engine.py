@@ -90,6 +90,104 @@ class BacktestResults:
     end_date: str = ""
     trading_days: int = 0
 
+    def save_to_directory(
+        self,
+        output_dir: str,
+        strategy_name: str,
+        strategy_code: str = "",
+        universe: str = "unknown",
+        survivorship_free: bool = False,
+    ) -> Dict[str, str]:
+        """
+        Save backtest results to CSV/JSON files for adversarial validation.
+
+        Returns:
+            Dict with paths to saved files
+        """
+        import os
+        import json
+
+        os.makedirs(output_dir, exist_ok=True)
+        safe_name = strategy_name.replace(" ", "_").replace("/", "_").lower()
+        paths = {}
+
+        # Save daily returns
+        if self.returns is not None:
+            returns_path = os.path.join(output_dir, f"{safe_name}_returns.csv")
+            self.returns.to_frame("returns").to_csv(returns_path)
+            paths["returns"] = returns_path
+
+        # Save signals/positions
+        if self.positions_over_time is not None:
+            signals_path = os.path.join(output_dir, f"{safe_name}_signals.csv")
+            self.positions_over_time.to_csv(signals_path)
+            paths["signals"] = signals_path
+
+        # Save equity curve
+        if self.equity_curve is not None:
+            equity_path = os.path.join(output_dir, f"{safe_name}_equity.csv")
+            self.equity_curve.to_frame("equity").to_csv(equity_path)
+            paths["equity"] = equity_path
+
+        # Save trades
+        if self.trades:
+            trades_path = os.path.join(output_dir, f"{safe_name}_trades.csv")
+            trades_data = [
+                {
+                    "symbol": t.symbol,
+                    "entry_date": str(t.entry_date),
+                    "entry_price": t.entry_price,
+                    "exit_date": str(t.exit_date) if t.exit_date else None,
+                    "exit_price": t.exit_price,
+                    "side": t.side,
+                    "return_pct": t.return_pct,
+                    "pnl": t.pnl,
+                }
+                for t in self.trades
+            ]
+            pd.DataFrame(trades_data).to_csv(trades_path, index=False)
+            paths["trades"] = trades_path
+
+        # Save metrics and metadata as JSON
+        metrics_path = os.path.join(output_dir, f"{safe_name}_metrics.json")
+        metrics = {
+            "strategy_name": strategy_name,
+            "universe": universe,
+            "survivorship_free": survivorship_free,
+            "start_date": self.start_date,
+            "end_date": self.end_date,
+            "trading_days": self.trading_days,
+            "metrics": self.get_metrics_dict(),
+        }
+        with open(metrics_path, "w") as f:
+            json.dump(metrics, f, indent=2)
+        paths["metrics"] = metrics_path
+
+        # Save strategy code
+        if strategy_code:
+            code_path = os.path.join(output_dir, f"{safe_name}_code.py")
+            with open(code_path, "w") as f:
+                f.write(f'"""\nStrategy: {strategy_name}\nUniverse: {universe}\n"""\n\n')
+                f.write(strategy_code)
+            paths["code"] = code_path
+
+        return paths
+
+    def get_metrics_dict(self) -> Dict[str, float]:
+        """Get metrics as a dictionary for validation."""
+        return {
+            "sharpe_ratio": self.sharpe_ratio,
+            "sortino_ratio": self.sortino_ratio,
+            "total_return": self.total_return,
+            "annual_return": self.annual_return,
+            "max_drawdown": self.max_drawdown,
+            "volatility": self.volatility,
+            "num_trades": self.num_trades,
+            "win_rate": self.win_rate,
+            "profit_factor": self.profit_factor,
+            "trading_days": self.trading_days,
+        }
+
 
 class BacktestEngine:
     """
