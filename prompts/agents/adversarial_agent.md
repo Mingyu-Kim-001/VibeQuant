@@ -120,10 +120,72 @@ result.recommendations  # List of fix suggestions
 | LOW | Minor concern (code style) | Note for improvement |
 | PASS | No issues found | Proceed with caution |
 
+## MANUAL TRADE VALIDATION (LLM Task)
+
+The automated validator uses regex patterns. **You must manually verify 1-2 trades** by:
+
+### Step 1: Pick a Sample Trade Date
+```python
+# Load trade data
+import pandas as pd
+returns = pd.read_csv('results/validated_alphas/alpha_001_maxdd_rev_returns.csv', index_col=0, parse_dates=True)
+
+# Pick a random date with significant return
+sample_date = returns[returns.iloc[:,0].abs() > 0.01].sample(1).index[0]
+print(f"Validating trade on: {sample_date}")
+```
+
+### Step 2: Read the Strategy Code
+```python
+with open('results/validated_alphas/alpha_001_maxdd_rev.py') as f:
+    code = f.read()
+print(code)
+```
+
+### Step 3: Manually Trace the Logic
+For the sample date, calculate step-by-step:
+
+1. **What data was available?** (only data up to T-1)
+   ```
+   On 2023-05-15, the strategy can only see prices up to 2023-05-14
+   ```
+
+2. **Walk through the signal calculation:**
+   ```
+   lookback = 5
+   returns_5d = prices.pct_change(5)  # Uses prices[T-5:T-1], OK
+   rank = returns_5d.rank()           # Ranks using data at T-1, OK
+   signal = rank < 10                 # Bottom 10 losers
+   ```
+
+3. **Verify no future data used:**
+   - Does `.shift()` appear where needed?
+   - Does `.rolling().mean()` use only past data?
+   - Are ranks computed on data available at decision time?
+
+### Step 4: Report Findings
+```markdown
+## Manual Validation: alpha_001_maxdd_rev
+
+**Sample Date:** 2023-05-15
+
+**Signal Calculation Trace:**
+1. 5-day return for AAPL: (142.50 - 138.20) / 138.20 = 3.1%
+2. Ranked 45th out of 200 stocks
+3. NOT in bottom 10, so signal = 0 ✓
+
+**Data Used:**
+- Prices from 2023-05-10 to 2023-05-14 ✓
+- No future data accessed ✓
+
+**Verdict:** VALID / INVALID (explain why)
+```
+
 ## YOUR ROLE
 
 The automated validator catches most issues. Focus your attention on:
-1. **Complex code patterns** that regex can't catch
-2. **Semantic issues** (e.g., using close price when strategy assumes open)
-3. **Novel bias patterns** not in the automated checks
-4. **Economic reasoning** - does the alpha have a logical explanation?
+1. **Manual trade validation** - trace 1-2 trades step by step (see above)
+2. **Complex code patterns** that regex can't catch
+3. **Semantic issues** (e.g., using close price when strategy assumes open)
+4. **Novel bias patterns** not in the automated checks
+5. **Economic reasoning** - does the alpha have a logical explanation?
