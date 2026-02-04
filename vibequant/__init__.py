@@ -40,3 +40,11 @@ from .alpha101 import (
     alpha001, alpha002, alpha006, alpha012, alpha033,
     alpha041, alpha042, alpha053, alpha054, alpha101,
 )
+
+from .strategy_evaluator import (
+    evaluate_backtest_metrics,
+    save_validated_alpha,
+    extract_learnings,
+    get_passing_criteria,
+    EvaluationResult,
+)
