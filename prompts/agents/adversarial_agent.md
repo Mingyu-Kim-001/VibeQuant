@@ -58,6 +58,22 @@ The `vibequant.adversarial_validation` module performs these automated checks:
 | Win rate > 80% | Suspicious | HIGH |
 | Annual return > 100% | Verify leverage | HIGH |
 
+## ALPHA STORAGE LOCATIONS
+
+| Location | Content |
+|----------|---------|
+| `results/validated_alphas/` | Successful alphas (code, metrics, returns) |
+| `memory/strategies.json` | All tested strategies (passed + failed) |
+| `memory/learnings.json` | Failed patterns and insights |
+
+```
+results/validated_alphas/
+├── alpha_001_*.py           # Strategy code
+├── alpha_001_*.json         # Metadata + metrics
+├── alpha_001_*_returns.csv  # Daily returns (for correlation)
+└── portfolio_correlation.json
+```
+
 ## USAGE
 
 ```python
@@ -67,7 +83,10 @@ from vibequant.adversarial_validation import (
     load_existing_alpha_returns,
 )
 
-# Validate single strategy
+# Load existing alpha returns for correlation checking
+existing_returns = load_existing_alpha_returns()  # Default: results/validated_alphas/
+
+# Validate single strategy against existing alphas
 result = validate_strategy(
     strategy_code=code,
     backtest_metrics=metrics,
@@ -75,11 +94,11 @@ result = validate_strategy(
     daily_returns=returns,
     signals=signals,
     benchmark_returns=spy_returns,  # For regime analysis
-    existing_alpha_returns=existing_df,  # For correlation check
+    existing_alpha_returns=existing_returns,  # For correlation check
 )
 
 # Validate all existing alphas
-results = validate_all_alphas("results/validated_alphas")
+results = validate_all_alphas()  # Default: results/validated_alphas/
 
 # Result structure
 result.validation_passed  # bool
