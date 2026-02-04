@@ -1,0 +1,8 @@
+{
+  "total_hypotheses": 10,
+  "total_strategies": 10,
+  "successful_strategies": 5,
+  "failed_strategies": 5,
+  "best_sharpe": 0.8273470964592702,
+  "best_return": 0.697465776577503
+}

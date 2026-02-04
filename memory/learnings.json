@@ -1,0 +1,105 @@
+{
+  "default_universe": {
+    "name": "sp500_sf",
+    "full_name": "S&P 500 Survivorship-Free",
+    "description": "Uses ACTUAL S&P 500 membership dates - the ONLY correct universe for realistic backtesting",
+    "data_source": "https://github.com/fja05680/sp500",
+    "file": "data_cache/sp500_membership.csv",
+    "why": "TSLA only valid from Dec 21, 2020 (S&P 500 addition), not 2010 (IPO). Prevents look-ahead bias."
+  },
+  "available_universes": {
+    "sp500_sf": {
+      "name": "S&P 500 Survivorship-Free",
+      "biased": false,
+      "recommended": true,
+      "description": "Uses actual S&P 500 membership dates from github.com/fja05680/sp500"
+    },
+    "dynamic": {
+      "name": "Dynamic Universe",
+      "biased": false,
+      "recommended": true,
+      "description": "Point-in-time selection based on price/volume. No look-ahead bias."
+    },
+    "etfs": {
+      "name": "ETFs Only",
+      "biased": false,
+      "recommended": true,
+      "description": "ETFs only. No single-stock risk, minimal survivorship bias."
+    },
+    "sp500": {
+      "name": "S&P 500 (Current)",
+      "biased": true,
+      "recommended": false,
+      "description": "Current constituents applied historically. Use for exploration only."
+    },
+    "nasdaq100": {
+      "name": "NASDAQ 100",
+      "biased": true,
+      "recommended": false,
+      "description": "Current NASDAQ 100 constituents. Contains survivorship bias."
+    },
+    "liquid_200": {
+      "name": "Liquid 200",
+      "biased": true,
+      "recommended": false,
+      "description": "Top 200 most liquid stocks today. HIGH survivorship bias - good for exploration."
+    },
+    "liquid_500": {
+      "name": "Liquid 500",
+      "biased": true,
+      "recommended": false,
+      "description": "Top 500 most liquid stocks today. HIGH survivorship bias."
+    },
+    "russell1000": {
+      "name": "Russell 1000 (Sample)",
+      "biased": true,
+      "recommended": false,
+      "description": "Russell 1000 large-cap sample. Contains survivorship bias."
+    }
+  },
+  "critical_rules": [
+    "DEFAULT to sp500_sf universe for realistic backtests",
+    "ALWAYS label results with universe used and bias status",
+    "Use biased universes (liquid_500, nasdaq100) for initial exploration ONLY",
+    "Final validation MUST use survivorship-free or dynamic universe",
+    "Example validation: TSLA first valid date should be 2020-12-21, NOT 2010"
+  ],
+  "how_to_load_data": {
+    "recommended": "from vibequant.data import load_universe_with_data",
+    "example_survivorship_free": "prices, mask, info = load_universe_with_data('sp500_sf', max_symbols=200)",
+    "example_biased_exploration": "prices, mask, info = load_universe_with_data('liquid_500', max_symbols=500)",
+    "example_etfs": "prices, mask, info = load_universe_with_data('etfs')",
+    "apply_mask": "masked_signals = signals.where(mask, 0)"
+  },
+  "bias_impact_measurements": {
+    "sharpe_difference": "0.89 (1.42 biased vs 0.53 survivorship-free)",
+    "return_difference": "686% (751% biased vs 65% survivorship-free)",
+    "conclusion": "Survivorship bias can inflate Sharpe by 2-3x and returns by 10x+"
+  },
+  "successful_patterns": [
+    "Short-term Reversal (lookback=5, hold_period=5): Sharpe 0.57-0.83 (survivorship-free)",
+    "Alpha042 VWAP Ratio: Sharpe 0.63 survivorship-free, most robust alpha",
+    "RSI Mean Reversion (rsi_period=7, rsi_entry=20): Sharpe 0.52, win rate 58.7%"
+  ],
+  "failed_patterns": [
+    "Low Volatility strategies: Low Sharpe 0.32 despite good win rate",
+    "Alpha033 Gap Reversal: Fails on survivorship-free (0.46) vs biased (1.12) - not robust"
+  ],
+  "technical_notes": [
+    "Stop-loss/trailing-stop don't help strategies with fixed holding periods",
+    "For discrete rebalancing, use position sizing for risk management, not stop-loss",
+    "Volatility scaling (vol_scaled) reduces returns but can improve risk-adjusted returns",
+    "WorldQuant Alpha101: 10 alphas implemented (alpha001, 002, 006, 012, 033, 041, 042, 053, 054, 101)",
+    "Alphas requiring OHLC data underperform when approximated from close-only prices",
+    "Leveraged ETFs (TQQQ, SOXL) excluded from dynamic universe due to decay"
+  ],
+  "backtest_results_by_universe": {
+    "sp500_sf_200": {
+      "short_term_reversal": {"sharpe": 0.57, "annual_return": "29.5%", "max_drawdown": "-83.4%"},
+      "alpha042_vwap": {"sharpe": 0.63}
+    },
+    "liquid_500_biased": {
+      "short_term_reversal": {"sharpe": 1.28, "note": "INFLATED due to survivorship bias"}
+    }
+  }
+}

@@ -1,0 +1,142 @@
+[
+  {
+    "id": "HYP_8772a589",
+    "hypothesis": "Stocks with worst 5-day returns rebound over next 5 days",
+    "rationale": "Auto-generated from Short-term Reversal (lookback=5, hold_period=5, bottom_n=5) template",
+    "category": "mean_reversion",
+    "created_at": "2026-02-02T22:53:46.301837",
+    "status": "passed",
+    "related_strategies": [
+      "STR_e38ee6bc"
+    ],
+    "tags": [],
+    "priority_score": 0.5,
+    "metadata": {}
+  },
+  {
+    "id": "HYP_76c33ae4",
+    "hypothesis": "Stocks within 0.95% of 60-day high continue trending",
+    "rationale": "Auto-generated from New High Breakout (lookback=60, threshold=0.95, max_positions=10) template",
+    "category": "momentum",
+    "created_at": "2026-02-02T22:53:55.597763",
+    "status": "failed",
+    "related_strategies": [
+      "STR_58e26cdd"
+    ],
+    "tags": [],
+    "priority_score": 0.5,
+    "metadata": {}
+  },
+  {
+    "id": "HYP_9e089cb7",
+    "hypothesis": "Stocks with RSI below 20 revert upward within 5 days",
+    "rationale": "Auto-generated from RSI Mean Reversion (rsi_period=7, rsi_entry=20, rsi_exit=50, max_hold=5, max_positions=5) template",
+    "category": "mean_reversion",
+    "created_at": "2026-02-02T22:55:11.600569",
+    "status": "passed",
+    "related_strategies": [
+      "STR_cec2f391"
+    ],
+    "tags": [],
+    "priority_score": 0.5,
+    "metadata": {}
+  },
+  {
+    "id": "HYP_c71eaf84",
+    "hypothesis": "Stocks with lowest 20-day volatility outperform on risk-adjusted basis",
+    "rationale": "Auto-generated from Low Volatility (vol_lookback=20, hold_period=21, top_n=10) template",
+    "category": "volatility",
+    "created_at": "2026-02-02T22:58:24.574587",
+    "status": "failed",
+    "related_strategies": [
+      "STR_f69d31bc"
+    ],
+    "tags": [],
+    "priority_score": 0.5,
+    "metadata": {}
+  },
+  {
+    "id": "HYP_69f23194",
+    "hypothesis": "Stocks with highest 5-day momentum continue outperforming over the next 5 days",
+    "rationale": "Auto-generated from Price Momentum (lookback=5, hold_period=5, top_n=5) template",
+    "category": "momentum",
+    "created_at": "2026-02-02T22:58:34.595468",
+    "status": "passed",
+    "related_strategies": [
+      "STR_938b288d"
+    ],
+    "tags": [],
+    "priority_score": 0.5,
+    "metadata": {}
+  },
+  {
+    "id": "HYP_5803c738",
+    "hypothesis": "Stocks with worst 5-day returns rebound over next 5 days",
+    "rationale": "Auto-generated from Short-term Reversal (lookback=5, hold_period=5, bottom_n=5) template",
+    "category": "mean_reversion",
+    "created_at": "2026-02-02T23:10:06.379630",
+    "status": "passed",
+    "related_strategies": [
+      "STR_90e49a97"
+    ],
+    "tags": [],
+    "priority_score": 0.5,
+    "metadata": {}
+  },
+  {
+    "id": "HYP_37142f26",
+    "hypothesis": "Stocks with top momentum AND low volatility provide best risk-adjusted returns",
+    "rationale": "Auto-generated from Momentum + Low Vol (mom_lookback=60, vol_lookback=60, hold_period=21, top_n=10) template",
+    "category": "factor",
+    "created_at": "2026-02-02T23:10:08.753837",
+    "status": "failed",
+    "related_strategies": [
+      "STR_522f2cb1"
+    ],
+    "tags": [],
+    "priority_score": 0.5,
+    "metadata": {}
+  },
+  {
+    "id": "HYP_2c456848",
+    "hypothesis": "Stocks with highest 63-day Sharpe ratio continue outperforming",
+    "rationale": "Auto-generated from Sharpe Quality (sharpe_lookback=63, hold_period=21, top_n=10) template",
+    "category": "factor",
+    "created_at": "2026-02-02T23:10:11.330703",
+    "status": "failed",
+    "related_strategies": [
+      "STR_4aca7bcf"
+    ],
+    "tags": [],
+    "priority_score": 0.5,
+    "metadata": {}
+  },
+  {
+    "id": "HYP_203ee380",
+    "hypothesis": "Stocks with highest 5-day momentum continue outperforming over the next 5 days",
+    "rationale": "Auto-generated from Price Momentum (lookback=5, hold_period=5, top_n=5) template",
+    "category": "momentum",
+    "created_at": "2026-02-02T23:10:13.884096",
+    "status": "passed",
+    "related_strategies": [
+      "STR_b4302264"
+    ],
+    "tags": [],
+    "priority_score": 0.5,
+    "metadata": {}
+  },
+  {
+    "id": "HYP_d3eed36c",
+    "hypothesis": "Stocks with lowest 20-day volatility outperform on risk-adjusted basis",
+    "rationale": "Auto-generated from Low Volatility (vol_lookback=20, hold_period=21, top_n=10) template",
+    "category": "volatility",
+    "created_at": "2026-02-02T23:10:16.432468",
+    "status": "failed",
+    "related_strategies": [
+      "STR_6d16c33d"
+    ],
+    "tags": [],
+    "priority_score": 0.5,
+    "metadata": {}
+  }
+]

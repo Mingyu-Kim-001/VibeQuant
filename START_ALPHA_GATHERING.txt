@@ -1,0 +1,136 @@
+================================================================================
+VIBEQUANT ALPHA GATHERER - PARALLEL PIPELINE
+================================================================================
+
+Copy everything below and paste into a new Claude Code session:
+
+--------------------------------------------------------------------------------
+
+You are the **Orchestrator** of a PARALLEL PIPELINE for alpha discovery.
+
+## SETUP
+
+1. Read system docs:
+```
+Read CLAUDE.md
+Read memory/learnings.json
+```
+
+2. Key rules:
+   - Universe: `sp500_sf` (survivorship-free) for all final tests
+   - Passing: Sharpe >= 0.8, Profit Factor >= 1.0, Trades >= 20
+   - Goal: Find 10 validated alphas
+
+## PARALLEL PIPELINE ARCHITECTURE
+
+Run agents in PARALLEL, not sequentially:
+
+```
+INSIGHT (batch)     RESEARCH (parallel)    BACKTEST (parallel)    FEEDBACK
+   │                      │                       │                   │
+   ├─ Hypo 1 ──────────▶ Code 1 ──────────────▶ Test 1 ────────────▶ Eval
+   ├─ Hypo 2 ──────────▶ Code 2 ──────────────▶ Test 2 ────────────▶ Eval
+   └─ Hypo 3 ──────────▶ Code 3 ──────────────▶ Test 3 ────────────▶ Eval
+```
+
+## HOW TO RUN PARALLEL
+
+Use Task tool with MULTIPLE calls in ONE message:
+
+### Step 1: Batch Generate Hypotheses (3 at once)
+```
+In a SINGLE message, spawn 3 Insight Agents in parallel:
+
+Task 1: "Read prompts/agents/insight_agent.md. Generate hypothesis for MOMENTUM category. Context: [learnings]"
+
+Task 2: "Read prompts/agents/insight_agent.md. Generate hypothesis for MEAN_REVERSION category. Context: [learnings]"
+
+Task 3: "Read prompts/agents/insight_agent.md. Generate hypothesis for FACTOR category. Context: [learnings]"
+```
+
+### Step 2: Parallel Coding (as hypotheses complete)
+```
+In a SINGLE message, spawn Research Agents for ready hypotheses:
+
+Task 1: "Read prompts/agents/research_agent.md. Implement: [hypothesis 1]"
+Task 2: "Read prompts/agents/research_agent.md. Implement: [hypothesis 2]"
+Task 3: "Read prompts/agents/research_agent.md. Implement: [hypothesis 3]"
+```
+
+### Step 3: Parallel Backtesting
+```
+In a SINGLE message:
+
+Task 1: "Read prompts/agents/backtest_agent.md. Test strategy: [code 1]. Universe: sp500_sf"
+Task 2: "Read prompts/agents/backtest_agent.md. Test strategy: [code 2]. Universe: sp500_sf"
+Task 3: "Read prompts/agents/backtest_agent.md. Test strategy: [code 3]. Universe: sp500_sf"
+```
+
+### Step 4: Evaluate (sequential - needs correlation check)
+```
+For each backtest result:
+
+Task: "Read prompts/agents/feedback_agent.md. Evaluate:
+- Strategy: [name]
+- Results: [metrics]
+- Existing alphas: [list validated alphas for correlation check]
+
+Check correlation to existing alphas. If PASS, save to results/validated_alphas/"
+```
+
+## WHERE ALPHAS ARE SAVED
+
+```
+results/validated_alphas/
+├── alpha_001_reversal.py           # Code
+├── alpha_001_reversal.json         # Metadata + metrics
+├── alpha_002_momentum.py
+├── alpha_002_momentum.json
+└── portfolio_correlation.json       # Correlation matrix
+```
+
+## PIPELINE STATE
+
+Track:
+```python
+state = {
+    "hypothesis_queue": [],      # Ready to code
+    "code_queue": [],            # Ready to test
+    "backtest_queue": [],        # Ready to evaluate
+    "validated_alphas": [],      # PASSED (saved to disk)
+    "failed": [],                # Learnings extracted
+    "iteration": 0
+}
+```
+
+## STOPPING CONDITIONS
+
+1. **SUCCESS**: 10 validated uncorrelated alphas
+2. **MAX_ITER**: 50 iterations
+3. **STALLED**: 15 consecutive failures
+
+## FINAL OUTPUT
+
+Create `results/alpha_gathering_summary.md`:
+```markdown
+# Validated Alphas
+
+| # | Name | Sharpe | Annual Ret | Max DD | Category |
+|---|------|--------|------------|--------|----------|
+| 1 | ...  | 0.85   | 32%        | -25%   | reversal |
+| 2 | ...  | 0.92   | 28%        | -30%   | momentum |
+
+## Summary
+- Total alphas found: X
+- Avg Sharpe: X.XX
+```
+
+## START NOW
+
+1. Read CLAUDE.md and memory/learnings.json
+2. Batch-generate 3 hypotheses (parallel)
+3. Run pipeline: Research → Backtest → Feedback
+4. Save passing alphas, extract learnings from failures
+5. Repeat until 10 uncorrelated alphas found
+
+--------------------------------------------------------------------------------
